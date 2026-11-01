@@ -18,6 +18,7 @@ Cloud Music 是一个开源、自托管音乐平台，以移动端为主，同�
 ## 设计文档
 
 - [产品规则与服务架构](design/README.md)
+- [技术方案与歌曲数据模型](design/data-model.md)
 - [分享会设计](design/party-mode.md)
 
 ## 路线图

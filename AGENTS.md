@@ -4,3 +4,7 @@
 - 命令执行沙箱可能隔离网络，即使开发容器和数据库服务运行正常，也会出现服务名无法解析或连接失败。遇到此情况时，先检查执行环境的网络隔离，并在获准访问容器网络的环境中验证，再判断 Compose 配置是否有问题。
 - 可用 `psql "$DATABASE_URL"` 和 `redis-cli -u "$REDIS_URL" --no-auth-warning PING` 验证连接；连接正常不代表读写及迁移已验证。
 - `just db-reset` 会删除 `cloudmusic_dev` 的 `public` schema 并重新运行迁移；`bash .devcontainer/scripts/reset-redis.sh` 会清空 Redis 数据库 0；`bash .devcontainer/scripts/reset-data.sh` 依次执行两者。重置会删除数据，执行前确认目标和影响范围。
+
+# 项目设计
+
+- 歌曲资源、用户持有记录、存储副本、转存授权与 Redis 职责见 [design/data-model.md](design/data-model.md)。该文档是设计约定，不代表业务表已实现；业务迁移随对应功能添加，保留已执行迁移历史。
