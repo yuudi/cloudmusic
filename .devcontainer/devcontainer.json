@@ -11,7 +11,8 @@
       "version": "26"
     },
     "ghcr.io/devcontainers-extra/features/apt-get-packages:1": {
-      "packages": "just,postgresql-client,redis-tools"
+      "packages": "just,hurl,postgresql-client,redis-tools",
+      "ppas": "ppa:lepapareil/hurl"
     }
   }
 }

@@ -1,0 +1,13 @@
+# 此 Monorepo 下每个项目自行管理自己的 .gitignore
+# 此文件只用于全局忽略规则
+
+# AI 文件只使用 AGENTS.md
+# 本地 AI 文件
+AGENTS.local.md
+AGENTS.override.md
+# 其他 AI AgentS 用户请自行创建软连接指向 AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+.claude
+.codex
+.cursorrules

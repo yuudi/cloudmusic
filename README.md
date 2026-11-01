@@ -6,7 +6,7 @@ Cloud Music 是一个开源、自托管音乐平台，以移动端为主，同�
 
 ## 本地开发
 
-使用 `.devcontainer` 重建并打开开发容器，Compose 会启动 Postgres 和 Redis。在仓库根目录执行 `just init` 安装前后端依赖，`just db-migrate` 初始化数据库，分别使用 `just dev-server` 和 `just dev-web` 启动服务。
+推荐使用 devcontainer，本仓库已包含 devcontainer 和 Postgres 和 Redis 设置。在仓库根目录执行 `just init` 安装前后端依赖，`just db-migrate` 初始化数据库，分别使用 `just dev-server` 和 `just dev-web` 启动服务。
 
 - [前端开发说明](apps/web/README.md)
 - [后端开发说明与数据库重置命令](apps/server/README.md)
