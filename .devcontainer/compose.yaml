@@ -1,0 +1,44 @@
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/go:2-1.27-trixie
+    command: sleep infinity
+    init: true
+    volumes:
+      - ..:/workspaces/cloudmusic:cached
+    environment:
+      DATABASE_URL: postgres://cloudmusic:cloudmusic@postgres:5432/cloudmusic_dev?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18.6-trixie
+    environment:
+      POSTGRES_USER: cloudmusic
+      POSTGRES_PASSWORD: cloudmusic
+      POSTGRES_DB: cloudmusic_dev
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudmusic -d cloudmusic_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8.10.3-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  redis-data:
