@@ -8,3 +8,10 @@
 # 项目设计
 
 - 歌曲资源、用户持有记录、存储副本、转存授权与 Redis 职责见 [design/data-model.md](design/data-model.md)。该文档是设计约定，不代表业务表已实现；业务迁移随对应功能添加，保留已执行迁移历史。
+
+# 后端 API 开发与验证
+
+- 实现或修改后端 API 时，依据实际路由、认证、请求与响应类型和错误行为同步更新 [OpenAPI 定义](apps/server/openapi/openapi.yaml)，并用 OpenAPI 校验工具检查规范及引用。接口行为有特殊限制时应在定义中写明。
+- 为新增或修改的业务规则编写有意义的 Go 单元测试，覆盖正常情况与关键边界；涉及数据库状态、事务或并发时补充数据库集成测试。运行 `just test-server`；需要验证数据库的测试通过 `TEST_DATABASE_URL="$DATABASE_URL" go -C apps/server test -race ./...` 运行。未设置 `TEST_DATABASE_URL` 时数据库集成测试会跳过，应在结果中说明。
+- 新增或修改 API 时，同步添加或更新 `apps/server/tests/hurl/` 中的 Hurl 测试，覆盖主要调用流程、认证和关键错误响应，并运行 `TEST_DATABASE_URL="$DATABASE_URL" bash apps/server/tests/hurl/run.sh`。脚本需要 PostgreSQL、Redis、Hurl、psql、curl 和 Python 3；它创建并清理独立的临时 PostgreSQL schema，不重置现有数据。测试入口及环境要求见 [后端开发说明](apps/server/README.md)。
+- 如测试因环境或依赖不可用而无法执行，报告未执行的检查和原因，不把跳过视为通过。

@@ -15,6 +15,7 @@ init:
 build-server:
     go -C apps/server build -o bin/server ./cmd/server
     go -C apps/server build -o bin/migrate ./cmd/migrate
+    go -C apps/server build -o bin/reset-password ./cmd/reset-password
 
 # 本地运行后端
 dev-server:

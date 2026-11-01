@@ -71,3 +71,26 @@ func TestMigrationConfigDoesNotRequireRedis(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTrustedProxies(t *testing.T) {
+	configure(t)
+	t.Setenv("TRUSTED_PROXIES", " 192.0.2.1, 10.0.0.0/8, 2001:db8::/32 ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.TrustedProxies) != 3 || cfg.TrustedProxies[0] != "192.0.2.1" || cfg.TrustedProxies[1] != "10.0.0.0/8" {
+		t.Fatalf("unexpected proxies: %v", cfg.TrustedProxies)
+	}
+	for _, bad := range []string{"proxy.example", "10.0.0.0/33", "10.0.0.1,", " "} {
+		t.Setenv("TRUSTED_PROXIES", bad)
+		if _, err := Load(); err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+	t.Setenv("TRUSTED_PROXIES", "")
+	cfg, err = Load()
+	if err != nil || len(cfg.TrustedProxies) != 0 {
+		t.Fatalf("default trusted proxies: %v %v", cfg.TrustedProxies, err)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -21,6 +22,7 @@ type Config struct {
 	Database          Database
 	RedisURL          string
 	HTTPAddr          string
+	TrustedProxies    []string
 	LogLevel          slog.Level
 	DependencyTimeout time.Duration
 	ReadHeaderTimeout time.Duration
@@ -44,6 +46,17 @@ func Load() (Config, error) {
 	}
 	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
 		return cfg, fmt.Errorf("HTTP_ADDR port must be between 1 and 65535")
+	}
+	if raw := os.Getenv("TRUSTED_PROXIES"); raw != "" {
+		for _, value := range strings.Split(raw, ",") {
+			value = strings.TrimSpace(value)
+			if net.ParseIP(value) == nil {
+				if _, _, err := net.ParseCIDR(value); err != nil {
+					return cfg, fmt.Errorf("TRUSTED_PROXIES must contain IP addresses or CIDR ranges")
+				}
+			}
+			cfg.TrustedProxies = append(cfg.TrustedProxies, value)
+		}
 	}
 	if err = cfg.LogLevel.UnmarshalText([]byte(env("LOG_LEVEL", "info"))); err != nil {
 		return cfg, fmt.Errorf("invalid LOG_LEVEL")

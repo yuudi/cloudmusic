@@ -1,6 +1,6 @@
 # Cloud Music 服务端
 
-Go 1.27.3、Gin、Postgres + GORM、Redis。Go 依赖通过 `go.mod` 和 `go.sum` 固定。当前提供工程骨架，不包含认证、歌曲、存储接入或音频转发业务。
+Go 1.27.3、Gin、Postgres + GORM、Redis。Go 依赖通过 `go.mod` 和 `go.sum` 固定。提供基础账号认证；歌曲、存储接入和音频转发业务尚未实现。
 
 ## 本地开发
 
@@ -35,6 +35,7 @@ set +a
 | `DATABASE_URL`             | 必填    | Postgres URL，支持 `postgres://`、`postgresql://` |
 | `REDIS_URL`                | 必填    | Redis URL，支持 `redis://`、`rediss://`           |
 | `HTTP_ADDR`                | `:8080` | HTTP 监听地址                                     |
+| `TRUSTED_PROXIES`          | 空      | 可信反向代理 IP 或 CIDR，逗号分隔；空表示不信任代理 |
 | `LOG_LEVEL`                | `info`  | slog 日志等级                                     |
 | `DB_MAX_OPEN_CONNS`        | `10`    | 数据库最大连接数，必须大于 0                      |
 | `DB_MAX_IDLE_CONNS`        | `5`     | 空闲连接数，0 到最大连接数                        |
@@ -44,7 +45,7 @@ set +a
 | `HTTP_IDLE_TIMEOUT`        | `60s`   | HTTP keep-alive 空闲超时                          |
 | `SHUTDOWN_TIMEOUT`         | `10s`   | 等待 HTTP 请求结束的退出超时                      |
 
-时间参数必须为正数，格式如 `500ms`、`3s`、`30m`。配置错误或启动时依赖不可达会退出并返回非零状态。日志为 stdout 上的 JSON；请求日志不记录查询参数、请求体和请求头。进程收到 SIGINT/SIGTERM 后停止接收新连接，等待已有请求完成，再关闭数据库和 Redis 连接。反向代理信任默认关闭，部署时应根据实际代理地址显式配置。
+时间参数必须为正数，格式如 `500ms`、`3s`、`30m`。配置错误或启动时依赖不可达会退出并返回非零状态。日志为 stdout 上的 JSON；请求日志不记录查询参数、请求体和请求头。进程收到 SIGINT/SIGTERM 后停止接收新连接，等待已有请求完成，再关闭数据库和 Redis 连接。反向代理信任默认关闭；使用代理时通过 `TRUSTED_PROXIES` 显式配置可信代理的 IP 或 CIDR。仅指定受控代理，代理必须清理或正确重写客户端提供的转发头，并确保不能绕过代理访问服务；否则客户端可能伪造来源 IP 并绕过限流。
 
 ## 健康检查
 
@@ -68,7 +69,7 @@ just db-migrate status   # 查看版本
 just db-migrate down     # 回滚一个版本
 ```
 
-`00001_placeholder.sql` 只执行 `CREATE TABLE bootstrap_placeholder ();`，暂不定义业务字段。后续通过新增编号 SQL 文件演进表结构，保留已执行的迁移历史；每个文件包含 `-- +goose Up` 与 `-- +goose Down`。
+`00001_placeholder.sql` 保留原有迁移历史；`00002_accounts.sql` 定义账号、密码凭据和会话。后续通过新增编号 SQL 文件演进表结构，保留已执行的迁移历史；每个文件包含 `-- +goose Up` 与 `-- +goose Down`。
 
 下面的重置命令会删除开发数据，只能手动执行：
 
@@ -116,3 +117,33 @@ just build-server
 - `migrations`：版本化 SQL。
 
 测试覆盖无效配置、连接串脱敏、依赖故障时的存活/就绪状态、探测超时及 HTTP panic 恢复；真实数据库迁移和开发容器启动需在具备 Docker 的环境中验证。
+
+## 账号 API
+
+接口类型、认证方式和响应状态详见 [OpenAPI 规范](openapi/openapi.yaml)。
+
+所有接口位于 `/api/v1/auth`，请求和响应使用 JSON。`POST /guest` 创建游客，`POST /register` 接收 `username`、`password`、`display_name`，`POST /login` 接收 `username`、`password`。成功返回 `user`、`token`、`token_type`、`expires_in`。用户名为 3–32 位 ASCII 字母、数字或下划线，比较忽略大小写；密码为 8–1024 字节，显示名最多 100 个 Unicode 字符。密码采用 Argon2id PHC 格式（版本 19，内存 64 MiB，迭代 3 次，并行度 4），记录算法、参数与随机盐；旧格式在成功登录后自动升级。数据库只保存随机会话令牌的 SHA-256 摘要。
+
+下列接口须带 `Authorization: Bearer <token>`：
+
+- `GET /me`：当前身份。
+- `PATCH /me`：可选提供 `display_name`、`username`（非空用户名仅正式账号可设置）；省略或传 null 的字段保持不变，空显示名会清空，空用户名保持不变。成功返回 204。
+- `POST /upgrade`：游客提供 `username`、`password`，保留用户 ID 和当前会话。
+- `POST /logout` 和 `POST /logout-all`：分别撤销当前会话和全部会话。
+- `POST /password`：正式账号提供 `old_password`、`new_password`，成功后撤销全部会话，需重新登录。
+
+会话在认证成功的活动请求后续期 30 天；`GET /me` 用于检查会话，不计为活动。游客超过 30 天没有活动即不可使用；服务启动后及每小时清理过期游客，撤销其会话并匿名化用户记录，保留 UUID。后续业务接入须在同一清理流程中处理个人数据，并区分用户活动与后台轮询；播放活动也需更新活跃时间。用户数据访问必须按当前用户 ID 限制，游客不能连接外部网盘，此约束须在网盘功能实现时执行。
+
+匿名创建与登录接口在单个服务进程中按来源地址合计限制每分钟 10 次；反向代理信任默认关闭；代理部署时需正确设置 `TRUSTED_PROXIES`，并在入口按真实客户端地址限流。生产环境须使用 HTTPS，保护 Bearer 令牌；退出游客会失去该设备的游客身份。服务端不在日志中记录令牌或密码。
+
+管理员在服务器的交互终端运行 `go -C apps/server run ./cmd/reset-password USERNAME`，输入并确认新密码。该命令仅要求数据库配置，重置后撤销全部会话。构建产物也可通过 `apps/server/bin/reset-password USERNAME` 运行。
+
+数据库集成测试使用 `TEST_DATABASE_URL`，会在目标库创建并删除名称随机的独立测试 schema；未设置时跳过。普通测试命令不需要数据库。
+
+账号 Hurl 端到端测试要求已安装 `hurl`、`psql`、`curl` 和 Python 3，并提供 PostgreSQL 与 Redis：
+
+```sh
+TEST_DATABASE_URL="$DATABASE_URL" bash apps/server/tests/hurl/run.sh
+```
+
+脚本在指定 PostgreSQL 数据库中创建随机名称的临时 schema，执行迁移并在本地随机端口启动服务；结束时停止服务并删除该 schema。Redis 仅供服务连接及健康检查，不会清空数据。`TEST_DATABASE_URL` 指向的数据库用户需要创建 schema 的权限。

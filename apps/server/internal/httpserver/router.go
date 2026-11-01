@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yuudi/cloudmusic/apps/server/internal/auth"
 )
 
 type Pinger func(context.Context) error
 
-func New(log *slog.Logger, timeout time.Duration, postgres, redis Pinger) *gin.Engine {
+func New(log *slog.Logger, timeout time.Duration, postgres, redis Pinger, services ...*auth.Service) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	// Proxy trust must be configured explicitly when a reverse proxy is added.
@@ -26,6 +27,9 @@ func New(log *slog.Logger, timeout time.Duration, postgres, redis Pinger) *gin.E
 		c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "method_not_allowed"})
 	})
 	api := router.Group("/api/v1")
+	if len(services) > 0 && services[0] != nil {
+		auth.RegisterRoutes(api, services[0])
+	}
 	api.GET("/health/live", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})

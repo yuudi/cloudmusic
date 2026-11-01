@@ -9,6 +9,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/yuudi/cloudmusic/apps/server/internal/auth"
 
 	"github.com/yuudi/cloudmusic/apps/server/internal/cache"
 	"github.com/yuudi/cloudmusic/apps/server/internal/config"
@@ -51,9 +54,34 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 	defer redis.Close()
+	authService := &auth.Service{DB: pool}
+	go func() {
+		runCleanup := func() {
+			cleanupCtx, cancel := context.WithTimeout(ctx, time.Minute)
+			defer cancel()
+			if err := authService.Cleanup(cleanupCtx); err != nil && ctx.Err() == nil {
+				log.Error("account cleanup failed", "error", err)
+			}
+		}
+		runCleanup()
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				runCleanup()
+			}
+		}
+	}()
+	router := httpserver.New(log, cfg.DependencyTimeout, pool.PingContext, func(ctx context.Context) error { return redis.Ping(ctx).Err() }, authService)
+	if err := router.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		return fmt.Errorf("trusted proxies: %w", err)
+	}
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpserver.New(log, cfg.DependencyTimeout, pool.PingContext, func(ctx context.Context) error { return redis.Ping(ctx).Err() }),
+		Handler:           router,
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelError),

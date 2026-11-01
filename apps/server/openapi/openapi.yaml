@@ -1,0 +1,456 @@
+openapi: 3.0.3
+info:
+  title: Cloud Music API
+  version: 0.1.0
+  description: |
+    个人账号及服务健康检查 API。所有账号端点位于 /api/v1/auth。
+    使用 HTTPS 传输 Bearer 令牌；认证成功的活动请求会延长会话有效期。
+servers:
+  - url: /api/v1
+    description: 同源 API
+
+security: []
+
+tags:
+  - name: 健康检查
+    description: 服务存活和依赖就绪状态。
+  - name: 账号与会话
+    description: 用户身份、密码及会话管理。
+
+paths:
+  /health/live:
+    get:
+      tags: [健康检查]
+      operationId: getLiveness
+      summary: 进程存活检查
+      responses:
+        '200':
+          description: 进程正常，不检查外部依赖。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Liveness'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /health/ready:
+    get:
+      tags: [健康检查]
+      operationId: getReadiness
+      summary: 数据库和 Redis 就绪检查
+      responses:
+        '200':
+          description: 所有依赖可达。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        '503':
+          description: 至少一个依赖不可达。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/guest:
+    post:
+      tags: [账号与会话]
+      operationId: createGuest
+      summary: 创建游客和会话
+      description: 游客令牌丢失后无法找回该游客身份；升级为正式账号后可使用用户名和密码登录。
+      responses:
+        '200':
+          $ref: '#/components/responses/SessionCreated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/register:
+    post:
+      tags: [账号与会话]
+      operationId: register
+      summary: 注册正式账号并创建会话
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/SessionCreated'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '409':
+          $ref: '#/components/responses/UsernameTaken'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/login:
+    post:
+      tags: [账号与会话]
+      operationId: login
+      summary: 登录并创建会话
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/SessionCreated'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/me:
+    get:
+      tags: [账号与会话]
+      operationId: getCurrentUser
+      summary: 查询当前用户
+      description: 该请求不更新最后活跃时间，也不延长会话有效期。
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 当前用户。
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [账号与会话]
+      operationId: updateCurrentUser
+      summary: 修改用户名或显示名
+      description: |
+        正式账号可修改用户名。游客不能设置非空用户名，须先升级。
+        省略字段或传 null 时保留原值；display_name 传空字符串可清空显示名。
+        username 传空字符串时保留原用户名。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '204':
+          description: 修改成功，无响应体。
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/UsernameTaken'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/upgrade:
+    post:
+      tags: [账号与会话]
+      operationId: upgradeGuest
+      summary: 将当前游客升级为正式账号
+      description: 保留用户 UUID 和当前会话；不与现有账号合并。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpgradeRequest'
+      responses:
+        '204':
+          description: 升级成功，无响应体。
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          description: 会话无效或当前账号不是可升级的游客。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: unauthorized
+        '409':
+          $ref: '#/components/responses/UsernameTaken'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/logout:
+    post:
+      tags: [账号与会话]
+      operationId: logout
+      summary: 撤销当前会话
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 当前会话已撤销，无响应体。
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/logout-all:
+    post:
+      tags: [账号与会话]
+      operationId: logoutAll
+      summary: 撤销当前用户的全部会话
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: 全部会话已撤销，无响应体。
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/password:
+    post:
+      tags: [账号与会话]
+      operationId: changePassword
+      summary: 修改密码
+      description: 成功后撤销当前用户所有会话，包括当前会话。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: 密码已修改，无响应体。
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          description: 会话无效、旧密码错误或当前用户没有密码凭据。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: unauthorized
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 使用登录、注册或创建游客时返回的 token。
+  headers:
+    NoStore:
+      description: 响应包含身份信息或令牌，不应缓存。
+      schema:
+        type: string
+        example: no-store
+  responses:
+    SessionCreated:
+      description: 会话创建成功。
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Session'
+    InvalidRequest:
+      description: 请求 JSON 格式或字段无效。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: invalid_request
+    Unauthorized:
+      description: 登录凭据或会话无效、过期或已撤销。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: unauthorized
+    UsernameTaken:
+      description: 用户名已被占用，比较时忽略大小写。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: username_taken
+    RateLimited:
+      description: 匿名创建和登录请求过于频繁。
+      headers:
+        Retry-After:
+          description: 建议重试前等待的秒数。
+          schema:
+            type: integer
+            example: 60
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: rate_limited
+    InternalError:
+      description: 服务内部错误。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: internal_server_error
+  schemas:
+    Username:
+      type: string
+      pattern: '^[A-Za-z0-9_]{3,32}$'
+      minLength: 3
+      maxLength: 32
+      description: 用户名全局唯一，比较不区分大小写，展示保留原大小写。
+      example: Music_Fan
+    Password:
+      type: string
+      format: password
+      description: 密码 UTF-8 编码后须为 8–1024 字节；该限制按字节而不是字符计算。
+      writeOnly: true
+    DisplayName:
+      type: string
+      maxLength: 100
+      description: 显示名最多 100 个 Unicode 字符，不允许 NUL，可为空。
+      example: 音乐爱好者
+    User:
+      type: object
+      required: [id, username, display_name, is_guest]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 内部用户 UUID，升级和改名时保持不变。
+        username:
+          type: string
+          nullable: true
+          description: 游客为 null；正式账号为用户名。
+        display_name:
+          $ref: '#/components/schemas/DisplayName'
+        is_guest:
+          type: boolean
+    Session:
+      type: object
+      required: [user, token, token_type, expires_in]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          description: 使用 Authorization Bearer 请求头发送的会话令牌。
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: 新会话有效期，单位为秒。
+          example: 2592000
+    CurrentUser:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+    RegisterRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          $ref: '#/components/schemas/Username'
+        password:
+          $ref: '#/components/schemas/Password'
+        display_name:
+          $ref: '#/components/schemas/DisplayName'
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          description: 用户名，登录时忽略大小写。
+        password:
+          type: string
+          format: password
+          writeOnly: true
+    UpgradeRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          $ref: '#/components/schemas/Username'
+        password:
+          $ref: '#/components/schemas/Password'
+    UpdateProfileRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          pattern: '^([A-Za-z0-9_]{3,32})?$'
+          nullable: true
+          description: 空字符串、null 或省略时不修改用户名；非空值仅正式账号可设置。
+        display_name:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: 省略或传 null 时保留原值；空字符串表示清空显示名，不允许 NUL。
+    ChangePasswordRequest:
+      type: object
+      required: [old_password, new_password]
+      properties:
+        old_password:
+          type: string
+          format: password
+          writeOnly: true
+        new_password:
+          $ref: '#/components/schemas/Password'
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [invalid_request, unauthorized, username_taken, rate_limited, internal_server_error, not_found, method_not_allowed]
+    Liveness:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+    Readiness:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        checks:
+          type: object
+          required: [postgres, redis]
+          properties:
+            postgres:
+              type: string
+              enum: [ok, unavailable]
+            redis:
+              type: string
+              enum: [ok, unavailable]
