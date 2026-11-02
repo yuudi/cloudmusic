@@ -3,6 +3,7 @@ import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import PwaUpdate from './PwaUpdate.svelte';
+import { setLanguage } from '#lib/i18n/index.js';
 
 const { state, registerSW, applyUpdate } = vi.hoisted(() => {
 	const state = { options: undefined as RegisterSWOptions | undefined };
@@ -20,12 +21,28 @@ const { state, registerSW, applyUpdate } = vi.hoisted(() => {
 vi.mock('virtual:pwa-register', () => ({ registerSW }));
 
 beforeEach(() => {
+	setLanguage('zh-CN');
 	state.options = undefined;
 	registerSW.mockClear();
 	applyUpdate.mockReset().mockResolvedValue(undefined);
 });
 
 describe('PWA 更新生命周期', () => {
+	it('切换语言时保留更新提示和失败状态，不激活更新', async () => {
+		setLanguage('en');
+		applyUpdate.mockRejectedValueOnce(new Error('failed'));
+		render(PwaUpdate);
+		await expect.poll(() => registerSW.mock.calls.length).toBe(1);
+		state.options?.onNeedRefresh?.();
+		await page.getByRole('button', { name: 'Refresh and update' }).click();
+		await expect
+			.element(page.getByRole('alert'))
+			.toHaveTextContent('Update failed. Please try again later.');
+		setLanguage('zh-CN');
+		await expect.element(page.getByRole('complementary', { name: '应用更新' })).toBeVisible();
+		await expect.element(page.getByRole('alert')).toHaveTextContent('更新失败，请稍后重试。');
+		expect(applyUpdate).toHaveBeenCalledOnce();
+	});
 	it('发现新版本后等待用户确认，选择稍后不会激活', async () => {
 		render(PwaUpdate);
 		await expect.poll(() => registerSW.mock.calls.length).toBe(1);

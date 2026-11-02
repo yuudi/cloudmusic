@@ -8,6 +8,7 @@ export default defineConfig({
 	workers: process.env.CI ? 2 : undefined,
 	reporter: [['list'], ['html', { open: 'never' }]],
 	use: {
+		locale: 'zh-CN',
 		baseURL: 'http://127.0.0.1:4173',
 		trace: 'retain-on-failure'
 	},

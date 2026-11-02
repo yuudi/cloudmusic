@@ -17,6 +17,7 @@
 		"test": "npm run test:unit && npm run test:e2e",
 		"test:e2e": "playwright test",
 		"test:install": "playwright install chromium firefox webkit",
+		"generate:api": "npm exec --yes --package=openapi-typescript@7.13.0 -- openapi-typescript ../server/openapi/openapi.yaml --output src/lib/api/schema.d.ts && prettier --write src/lib/api/schema.d.ts",
 		"validate": "npm run check && npm run lint && npm test",
 		"icons": "node scripts/generate-icons.mjs"
 	},
@@ -26,9 +27,12 @@
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
 		"@playwright/test": "^1.60.0",
+		"@skeletonlabs/skeleton": "^5.0.1",
+		"@skeletonlabs/skeleton-svelte": "^5.0.1",
 		"@sveltejs/adapter-static": "^4.0.0",
 		"@sveltejs/kit": "^3.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.2.0",
+		"@tailwindcss/vite": "^4.3.3",
 		"@types/node": "^26",
 		"@unplugin-pwa/core": "^0.0.3",
 		"@vite-pwa/sveltekit": "^2.0.0",
@@ -41,9 +45,9 @@
 		"playwright": "^1.60.0",
 		"prettier": "^3.8.3",
 		"prettier-plugin-svelte": "^4.1.0",
-		"sass": "^1.107.1",
 		"svelte": "^5.57.2",
 		"svelte-check": "^4.6.0",
+		"tailwindcss": "^4.3.3",
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.60.1",
 		"vite": "^8.3.0",
@@ -53,5 +57,8 @@
 	"imports": {
 		"#lib": "./src/lib/index.js",
 		"#lib/*": "./src/lib/*"
+	},
+	"dependencies": {
+		"svelte-i18n": "^4.0.1"
 	}
 }

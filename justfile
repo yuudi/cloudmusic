@@ -21,6 +21,10 @@ build-server:
 dev-server:
     go -C apps/server run ./cmd/server
 
+# 同时运行前后端，按 Ctrl+C 一起停止
+[parallel]
+dev: dev-server dev-web
+
 # 运行后端测试
 test-server:
     go -C apps/server test -race ./...

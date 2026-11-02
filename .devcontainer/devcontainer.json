@@ -5,14 +5,22 @@
   "workspaceFolder": "/workspaces/cloudmusic",
   "remoteUser": "vscode",
   "shutdownAction": "stopCompose",
-  "forwardPorts": [5173, 8080, "postgres:5432", "redis:6379"],
+  "forwardPorts": [
+    5173,
+    8080,
+    "postgres:5432",
+    "redis:6379"
+  ],
   "features": {
     "ghcr.io/devcontainers/features/node:2": {
       "version": "26"
     },
     "ghcr.io/devcontainers-extra/features/apt-get-packages:1": {
-      "packages": "just,hurl,postgresql-client,redis-tools",
+      "packages": "hurl,postgresql-client,redis-tools",
       "ppas": "ppa:lepapareil/hurl"
+    },
+    "ghcr.io/devcontainers-extra/features/npm-package:1": {
+      "package": "rust-just"
     }
   }
 }

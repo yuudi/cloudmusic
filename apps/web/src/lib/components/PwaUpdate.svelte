@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import UpdatePrompt from './UpdatePrompt.svelte';
+	import type { MessageState } from '#lib/i18n/types.js';
 
 	let needsUpdate = $state(false);
 	let updating = $state(false);
-	let error = $state('');
+	let error = $state<MessageState>('');
 	let applyUpdate: (() => Promise<void>) | undefined;
 
 	onMount(() => {
@@ -46,7 +47,7 @@
 		try {
 			await applyUpdate();
 		} catch {
-			error = '更新失败，请稍后重试。';
+			error = 'pwa.failed';
 		} finally {
 			updating = false;
 		}

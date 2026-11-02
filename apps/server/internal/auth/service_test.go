@@ -222,6 +222,34 @@ func TestHTTPGuestUpgrade(t *testing.T) {
 	if e := json.Unmarshal(guest.Body.Bytes(), &result); e != nil {
 		t.Fatal(e)
 	}
+	// Polling identity must not keep a guest alive; editing their profile must.
+	if _, err := db.Exec(`UPDATE users SET last_active_at=now()-interval '1 day' WHERE id=$1`, result.User.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE sessions SET expires_at=now()+interval '1 hour' WHERE user_id=$1`, result.User.ID); err != nil {
+		t.Fatal(err)
+	}
+	var beforeActivity, beforeExpiry time.Time
+	readActivity := func() (activity, expiry time.Time) {
+		t.Helper()
+		if err := db.QueryRow(`SELECT u.last_active_at,s.expires_at FROM users u JOIN sessions s ON s.user_id=u.id WHERE u.id=$1`, result.User.ID).Scan(&activity, &expiry); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	beforeActivity, beforeExpiry = readActivity()
+	if w := request("GET", "/api/v1/auth/me", "", result.Token); w.Code != 200 {
+		t.Fatalf("guest identity check: %d", w.Code)
+	}
+	if activity, expiry := readActivity(); !activity.Equal(beforeActivity) || !expiry.Equal(beforeExpiry) {
+		t.Fatal("identity check changed activity or expiry")
+	}
+	if w := request("PATCH", "/api/v1/auth/me", `{"display_name":"guest name"}`, result.Token); w.Code != 204 {
+		t.Fatalf("guest profile update: %d", w.Code)
+	}
+	if activity, expiry := readActivity(); !activity.After(beforeActivity) || !expiry.After(beforeExpiry) {
+		t.Fatal("profile edit did not refresh activity and expiry")
+	}
 	upgrade := request("POST", "/api/v1/auth/upgrade", `{"username":"Person","password":"good password"}`, result.Token)
 	if upgrade.Code != 204 {
 		t.Fatalf("upgrade %d %s", upgrade.Code, upgrade.Body.String())

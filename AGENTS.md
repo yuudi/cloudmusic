@@ -15,3 +15,9 @@
 - 为新增或修改的业务规则编写有意义的 Go 单元测试，覆盖正常情况与关键边界；涉及数据库状态、事务或并发时补充数据库集成测试。运行 `just test-server`；需要验证数据库的测试通过 `TEST_DATABASE_URL="$DATABASE_URL" go -C apps/server test -race ./...` 运行。未设置 `TEST_DATABASE_URL` 时数据库集成测试会跳过，应在结果中说明。
 - 新增或修改 API 时，同步添加或更新 `apps/server/tests/hurl/` 中的 Hurl 测试，覆盖主要调用流程、认证和关键错误响应，并运行 `TEST_DATABASE_URL="$DATABASE_URL" bash apps/server/tests/hurl/run.sh`。脚本需要 PostgreSQL、Redis、Hurl、psql、curl 和 Python 3；它创建并清理独立的临时 PostgreSQL schema，不重置现有数据。测试入口及环境要求见 [后端开发说明](apps/server/README.md)。
 - 如测试因环境或依赖不可用而无法执行，报告未执行的检查和原因，不把跳过视为通过。
+
+# 前端账号与验证
+
+- 前端采用 Tailwind CSS 和 Skeleton，使用黑白灰底色、深红强调色，深浅色跟随系统。API 类型由 OpenAPI 生成，修改 API 后在 `apps/web` 执行 `npm run generate:api`，不要手动修改 `src/lib/api/schema.d.ts`。
+- 前端国际化使用 `svelte-i18n`，支持 `en` 和 `zh-CN`，英文为回退语言。新增 UI 文案须同步维护 `apps/web/src/lib/i18n/messages/` 中的两份字典；错误和通知保存消息键，在渲染时翻译。语言切换不得刷新页面、重置身份或表单，也不改变路由。用户内容不翻译；国际化规则及测试见前端 README。
+- `npm run test:unit` 包含账号客户端和浏览器会话测试；普通 E2E 使用模拟 API 验证账号边界。交付账号功能时还应在仓库根目录运行 `TEST_DATABASE_URL="$DATABASE_URL" bash apps/web/tests/e2e/run.sh`，验证真实后端，脚本仅创建和清理随机临时 PostgreSQL schema。不要把普通 E2E 中跳过的真实后端用例视为联调通过。

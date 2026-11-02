@@ -14,7 +14,7 @@ just db-migrate
 just dev-server
 ```
 
-另开终端执行 `just dev-web`。Vite 将 `/api` 代理到 `http://localhost:8080`，浏览器使用同源 API，不需要开放 CORS。生产环境同样通过同源 `/api` 访问；当前 Go 服务不托管前端静态文件。
+另开终端执行 `just dev-web`，或直接使用 `just dev` 同时启动前后端。Vite 默认将 `/api` 代理到 `http://localhost:8080`，浏览器使用同源 API，不需要开放 CORS。生产环境同样通过同源 `/api` 访问；当前 Go 服务不托管前端静态文件。just 的版本要求见[根目录开发说明](../../README.md#本地开发)。
 
 Compose 自动注入 `DATABASE_URL` 和 `REDIS_URL`，使用 `postgres`、`redis` 服务名；不必创建 `.env`。数据库和 Redis 使用独立命名卷，重建开发容器保留数据，容器启动不自动执行迁移或重置。
 
@@ -30,20 +30,20 @@ set +a
 
 ## 配置
 
-| 环境变量                   | 默认值  | 用途                                              |
-| -------------------------- | ------- | ------------------------------------------------- |
-| `DATABASE_URL`             | 必填    | Postgres URL，支持 `postgres://`、`postgresql://` |
-| `REDIS_URL`                | 必填    | Redis URL，支持 `redis://`、`rediss://`           |
-| `HTTP_ADDR`                | `:8080` | HTTP 监听地址                                     |
+| 环境变量                   | 默认值  | 用途                                                |
+| -------------------------- | ------- | --------------------------------------------------- |
+| `DATABASE_URL`             | 必填    | Postgres URL，支持 `postgres://`、`postgresql://`   |
+| `REDIS_URL`                | 必填    | Redis URL，支持 `redis://`、`rediss://`             |
+| `HTTP_ADDR`                | `:8080` | HTTP 监听地址                                       |
 | `TRUSTED_PROXIES`          | 空      | 可信反向代理 IP 或 CIDR，逗号分隔；空表示不信任代理 |
-| `LOG_LEVEL`                | `info`  | slog 日志等级                                     |
-| `DB_MAX_OPEN_CONNS`        | `10`    | 数据库最大连接数，必须大于 0                      |
-| `DB_MAX_IDLE_CONNS`        | `5`     | 空闲连接数，0 到最大连接数                        |
-| `DB_CONN_MAX_LIFETIME`     | `30m`   | 连接最长存活时间                                  |
-| `DEPENDENCY_TIMEOUT`       | `3s`    | 启动时每项依赖及完整就绪探测的超时                |
-| `HTTP_READ_HEADER_TIMEOUT` | `5s`    | HTTP 请求头读取超时                               |
-| `HTTP_IDLE_TIMEOUT`        | `60s`   | HTTP keep-alive 空闲超时                          |
-| `SHUTDOWN_TIMEOUT`         | `10s`   | 等待 HTTP 请求结束的退出超时                      |
+| `LOG_LEVEL`                | `info`  | slog 日志等级                                       |
+| `DB_MAX_OPEN_CONNS`        | `10`    | 数据库最大连接数，必须大于 0                        |
+| `DB_MAX_IDLE_CONNS`        | `5`     | 空闲连接数，0 到最大连接数                          |
+| `DB_CONN_MAX_LIFETIME`     | `30m`   | 连接最长存活时间                                    |
+| `DEPENDENCY_TIMEOUT`       | `3s`    | 启动时每项依赖及完整就绪探测的超时                  |
+| `HTTP_READ_HEADER_TIMEOUT` | `5s`    | HTTP 请求头读取超时                                 |
+| `HTTP_IDLE_TIMEOUT`        | `60s`   | HTTP keep-alive 空闲超时                            |
+| `SHUTDOWN_TIMEOUT`         | `10s`   | 等待 HTTP 请求结束的退出超时                        |
 
 时间参数必须为正数，格式如 `500ms`、`3s`、`30m`。配置错误或启动时依赖不可达会退出并返回非零状态。日志为 stdout 上的 JSON；请求日志不记录查询参数、请求体和请求头。进程收到 SIGINT/SIGTERM 后停止接收新连接，等待已有请求完成，再关闭数据库和 Redis 连接。反向代理信任默认关闭；使用代理时通过 `TRUSTED_PROXIES` 显式配置可信代理的 IP 或 CIDR。仅指定受控代理，代理必须清理或正确重写客户端提供的转发头，并确保不能绕过代理访问服务；否则客户端可能伪造来源 IP 并绕过限流。
 
@@ -88,6 +88,7 @@ bash .devcontainer/scripts/reset-data.sh    # 依次重置 Postgres 与 Redis
 | 命令                | 用途                                    |
 | ------------------- | --------------------------------------- |
 | `just init`         | 安装前后端依赖                          |
+| `just dev`          | 同时启动前后端                          |
 | `just dev-server`   | 本地启动                                |
 | `just build-server` | 构建服务、迁移工具到 `apps/server/bin/` |
 | `just test-server`  | 带 race detector 的测试，无需外部数据库 |
@@ -110,13 +111,15 @@ just build-server
 
 - `cmd/server`：服务入口及进程生命周期。
 - `cmd/migrate`：独立迁移入口。
+- `cmd/reset-password`：管理员交互式重置密码。
+- `internal/auth`：账号、密码凭据、会话与游客清理。
 - `internal/config`：环境变量读取与校验。
 - `internal/database`：GORM、Postgres 连接池。
 - `internal/cache`：Redis 连接。
 - `internal/httpserver`：路由、日志、panic 恢复与健康检查。
 - `migrations`：版本化 SQL。
 
-测试覆盖无效配置、连接串脱敏、依赖故障时的存活/就绪状态、探测超时及 HTTP panic 恢复；真实数据库迁移和开发容器启动需在具备 Docker 的环境中验证。
+测试覆盖无效配置、连接串脱敏、依赖故障时的存活/就绪状态、探测超时及 HTTP panic 恢复。账号数据库集成测试另覆盖游客升级、资料与会话、密码重置并发及游客清理；设置 `TEST_DATABASE_URL` 后会创建和清理随机临时 schema，未设置时跳过。开发容器重建需要 Docker。
 
 ## 账号 API
 
@@ -127,7 +130,7 @@ just build-server
 下列接口须带 `Authorization: Bearer <token>`：
 
 - `GET /me`：当前身份。
-- `PATCH /me`：可选提供 `display_name`、`username`（非空用户名仅正式账号可设置）；省略或传 null 的字段保持不变，空显示名会清空，空用户名保持不变。成功返回 204。
+- `PATCH /me`：可选提供 `display_name`、`username`（非空用户名仅正式账号可设置）；省略或传 null 的字段保持不变，空显示名会清空，空用户名保持不变。计为用户活动，更新最后活跃时间并延长当前会话有效期；成功返回 204。
 - `POST /upgrade`：游客提供 `username`、`password`，保留用户 ID 和当前会话。
 - `POST /logout` 和 `POST /logout-all`：分别撤销当前会话和全部会话。
 - `POST /password`：正式账号提供 `old_password`、`new_password`，成功后撤销全部会话，需重新登录。

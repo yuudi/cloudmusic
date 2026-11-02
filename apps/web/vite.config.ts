@@ -3,14 +3,19 @@ import { playwright } from '@vitest/browser-playwright';
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { withPwa } from '@vite-pwa/sveltekit';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
 	server: {
 		proxy: {
-			'/api': { target: 'http://localhost:8080', changeOrigin: true }
+			'/api': {
+				target: process.env.CLOUDMUSIC_API_URL ?? 'http://localhost:8080',
+				changeOrigin: true
+			}
 		}
 	},
 	plugins: [
+		tailwindcss(),
 		withPwa(
 			{
 				preprocess: vitePreprocess(),
@@ -30,13 +35,13 @@ export default defineConfig({
 					id: '/',
 					name: 'Cloud Music',
 					short_name: 'Cloud Music',
-					description: '连接自己的存储空间，随时聆听你的音乐。',
-					lang: 'zh-CN',
+					description: 'Connect your own storage and enjoy your music anywhere.',
+					lang: 'en',
 					start_url: '/',
 					scope: '/',
 					display: 'standalone',
-					theme_color: '#175e50',
-					background_color: '#f7faf8',
+					theme_color: '#121212',
+					background_color: '#fafafa',
 					icons: [
 						{ src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
 						{ src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },

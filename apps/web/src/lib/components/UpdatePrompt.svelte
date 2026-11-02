@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '#lib/i18n/index.js';
+	import type { MessageState } from '#lib/i18n/types.js';
 	let {
 		updating = false,
 		error = '',
@@ -6,25 +8,25 @@
 		onDismiss
 	}: {
 		updating?: boolean;
-		error?: string;
+		error?: MessageState;
 		onUpdate: () => void;
 		onDismiss: () => void;
 	} = $props();
 </script>
 
-<aside aria-label="应用更新" aria-live="polite">
-	<p>新版本已就绪，刷新后即可使用。</p>
-	<p class="muted">刷新会中断当前播放，你可以稍后再更新。</p>
-	{#if error}<p role="alert">{error}</p>{/if}
+<aside aria-label={$t('pwa.label')} aria-live="polite">
+	<p>{$t('pwa.ready')}</p>
+	<p class="muted">{$t('pwa.interrupt')}</p>
+	{#if error}<p role="alert">{$t(error)}</p>{/if}
 	<div class="actions">
 		<button type="button" onclick={onUpdate} disabled={updating}>
-			{updating ? '正在更新…' : '刷新更新'}
+			{updating ? $t('pwa.updating') : $t('pwa.refresh')}
 		</button>
-		<button type="button" onclick={onDismiss} disabled={updating}>稍后</button>
+		<button type="button" onclick={onDismiss} disabled={updating}>{$t('pwa.later')}</button>
 	</div>
 </aside>
 
-<style lang="scss">
+<style>
 	aside {
 		position: fixed;
 		right: 1rem;
@@ -36,7 +38,7 @@
 		border: 1px solid var(--border);
 		border-radius: 1rem;
 		background: var(--surface);
-		box-shadow: 0 0.5rem 2rem #172d2720;
+		box-shadow: 0 0.5rem 2rem #00000020;
 	}
 
 	p {

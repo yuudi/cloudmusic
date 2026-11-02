@@ -140,7 +140,8 @@ func (h handler) authenticate(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	u, e := h.service.Authenticate(c.Request.Context(), a[1], c.FullPath() != "/api/v1/auth/me")
+	active := c.Request.Method != http.MethodGet || c.FullPath() != "/api/v1/auth/me"
+	u, e := h.service.Authenticate(c.Request.Context(), a[1], active)
 	if e != nil {
 		fail(c, e)
 		c.Abort()

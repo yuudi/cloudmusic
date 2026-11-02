@@ -9,6 +9,21 @@ jsonpath "$.user.is_guest" == true
 jsonpath "$.token_type" == "Bearer"
 header "Cache-Control" == "no-store"
 
+# Guest profile editing counts as activity; checking /me alone does not.
+PATCH {{base_url}}/api/v1/auth/me
+Authorization: Bearer {{guest_token}}
+Content-Type: application/json
+{"display_name":"临时昵称"}
+HTTP 204
+
+GET {{base_url}}/api/v1/auth/me
+Authorization: Bearer {{guest_token}}
+HTTP 200
+[Asserts]
+jsonpath "$.user.id" == "{{guest_id}}"
+jsonpath "$.user.display_name" == "临时昵称"
+jsonpath "$.user.is_guest" == true
+
 POST {{base_url}}/api/v1/auth/upgrade
 Authorization: Bearer {{guest_token}}
 Content-Type: application/json

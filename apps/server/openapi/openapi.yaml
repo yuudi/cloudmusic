@@ -139,6 +139,7 @@ paths:
         正式账号可修改用户名。游客不能设置非空用户名，须先升级。
         省略字段或传 null 时保留原值；display_name 传空字符串可清空显示名。
         username 传空字符串时保留原用户名。
+        此操作计为用户活动，更新最后活跃时间并延长当前会话有效期。
       security:
         - bearerAuth: []
       requestBody:
