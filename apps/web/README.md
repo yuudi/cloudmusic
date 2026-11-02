@@ -23,7 +23,31 @@ npm run dev -- --host 0.0.0.0
 
 资料与密码表单分别保留草稿。同一账号重新验证会话（例如当前密码输入错误）不会覆盖未保存的用户名和显示名；资料保存成功后再同步服务端返回的最新资料。切换到不同账号时重新初始化表单。游客升级后填入正式用户名，同时保留未保存的显示名草稿。
 
-API 类型由 `apps/server/openapi/openapi.yaml` 生成到 `src/lib/api/schema.d.ts`；修改 API 后执行 `npm run generate:api` 并提交生成文件。生成工具使用固定版本的独立 npm CLI 环境，不加入前端依赖树；首次运行需要网络下载工具。开发代理默认连接 8080，也可通过 `CLOUDMUSIC_API_URL` 指定测试后端。
+## API 与 OpenAPI
+
+OpenAPI 描述前后端的 HTTP 接口约定，包括路径、方法、认证、请求体、响应和错误。项目使用 OpenAPI 3.0.3，规范随后端实现一起手动维护；当前 Go 路由和处理函数仍由后端代码定义。
+
+| 文件                                       | 职责                                                                   | 维护方式                           |
+| ------------------------------------------ | ---------------------------------------------------------------------- | ---------------------------------- |
+| [后端规范](../server/openapi/openapi.yaml) | 描述接口及字段、状态码和行为限制                                       | 修改 API 时同步维护                |
+| [schema.d.ts](src/lib/api/schema.d.ts)     | 生成的 `paths`、`operations` 和 `components` TypeScript 类型           | 运行生成命令，提交结果，不手动编辑 |
+| [client.ts](src/lib/api/client.ts)         | 使用 `openapi-fetch` 和 `paths` 创建公共请求客户端，统一处理 HTTP 错误 | 手动维护公共请求策略               |
+| [auth.ts](src/lib/api/auth.ts)             | 通过公共客户端封装账号操作，提供错误消息键和输入校验                   | 随账号接口调整                     |
+
+`openapi-typescript` 负责从规范生成类型；`openapi-fetch` 在发送请求时使用这些类型，编译器据此检查路径、HTTP 方法和请求体，并推导响应类型。例如，`client.POST('/auth/login', { body: { username, password } })` 的请求和响应类型由规范中的登录接口决定。公共客户端的 `baseUrl` 是 `/api/v1`，调用路径从 `/auth` 等业务前缀开始。
+
+公共客户端使用 `cache: 'no-store'` 和 `credentials: 'omit'`。Bearer 令牌由账号封装按请求显式传入，登录、注册和创建游客请求不携带已有账号的令牌。非成功 HTTP 响应转换为包含 `status` 和 `code` 的 `ApiError`；错误正文不是有效的错误对象时，错误码使用 `unknown`。网络异常向上传递，会话失效处理由会话层负责，界面通过消息键翻译错误。返回 JSON 数据的账号操作要求响应有正文；修改资料等返回 204 的操作接受空响应。
+
+这些类型只提供编译期约束，不校验服务端实际返回的 JSON 结构，也不替代后端输入校验和接口测试。Go 实现、规范和生成类型须保持一致。
+
+修改接口时按以下流程处理：
+
+1. 根据实际 Go 路由和行为更新规范，包含认证方式、字段可选性、`null` 与空字符串的含义、成功和错误状态码，以及密码字节长度等特殊限制；使用 OpenAPI 校验工具检查规范及 `$ref` 引用。
+2. 在 `apps/web` 执行 `npm run generate:api`。该命令使用固定版本的 `openapi-typescript@7.13.0` 生成类型并格式化输出；工具通过独立 npm CLI 环境运行，首次使用需要联网下载。
+3. 根据类型检查结果调整账号等业务封装及调用方，并将规范、生成的 `schema.d.ts` 和相关代码一起提交。
+4. 在 `apps/web` 执行 `npm run check` 和 `npm run test:unit`；浏览器测试依赖见[工程检查](#工程检查)。涉及后端行为变更时，同时按[后端开发说明](../server/README.md#账号-api)更新并运行 Go、数据库及 Hurl 测试。
+
+生成命令读取本地 YAML 文件，无需启动后端。实际请求通过同源 `/api` 发送；开发代理默认连接 8080，也可通过 `CLOUDMUSIC_API_URL` 指定测试后端。
 
 ## 国际化
 
@@ -72,6 +96,8 @@ TEST_DATABASE_URL="$DATABASE_URL" bash apps/web/tests/e2e/run.sh
 ```
 
 脚本创建随机临时 PostgreSQL schema，执行迁移，启动独立端口的后端，再运行 Chromium 账号测试；结束后停止后端并删除该 schema，不重置开发数据。覆盖游客升级的身份继承、资料隔离、大小写登录、当前会话退出、改密撤销所有会话和退出所有设备。普通 `npm run test:e2e` 跳过此真实后端用例；运行上述脚本才算完成联调验证。
+
+后端测试环境由[公共测试脚本](../../scripts/README.md)管理，启动、清理、信号处理及限制见该说明。
 
 `TEST_DATABASE_URL` 对应的用户须有创建和删除测试 schema 的权限；`REDIS_URL` 必须指向可达的 Redis，脚本不清空 Redis。脚本直接读取环境变量，不加载 `apps/server/.env`；容器外使用时先按后端 README 加载配置。预览服务器固定使用 4173 端口，不能与另一轮前端 E2E 同时运行。真实账号测试固定使用 Chromium 和单个 worker，避免触发匿名账号接口每分钟 10 次的限流；跨浏览器界面行为由普通 E2E 覆盖。
 

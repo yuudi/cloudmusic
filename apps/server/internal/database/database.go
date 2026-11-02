@@ -2,33 +2,20 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"log/slog"
-	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/yuudi/cloudmusic/apps/server/internal/config"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
-func Open(ctx context.Context, cfg config.Database, log *slog.Logger) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(cfg.URL), &gorm.Config{
-		DisableAutomaticPing: true,
-		Logger: logger.New(slog.NewLogLogger(log.Handler(), slog.LevelWarn), logger.Config{
-			SlowThreshold:             time.Second,
-			LogLevel:                  logger.Warn,
-			IgnoreRecordNotFoundError: true,
-			ParameterizedQueries:      true,
-		}),
-	})
+func Open(ctx context.Context, cfg config.Database) (*sql.DB, error) {
+	driverConfig, err := pgx.ParseConfig(cfg.URL)
 	if err != nil {
-		return nil, fmt.Errorf("open postgres: %w", err)
+		return nil, fmt.Errorf("invalid DATABASE_URL")
 	}
-	pool, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("get postgres pool: %w", err)
-	}
+	pool := stdlib.OpenDB(*driverConfig)
 	pool.SetMaxOpenConns(cfg.MaxOpenConns)
 	pool.SetMaxIdleConns(cfg.MaxIdleConns)
 	pool.SetConnMaxLifetime(cfg.ConnMaxLifetime)
@@ -36,5 +23,5 @@ func Open(ctx context.Context, cfg config.Database, log *slog.Logger) (*gorm.DB,
 		_ = pool.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return db, nil
+	return pool, nil
 }

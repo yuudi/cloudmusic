@@ -37,12 +37,8 @@ func main() {
 
 func run(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	startup, cancel := context.WithTimeout(ctx, cfg.DependencyTimeout)
-	db, err := database.Open(startup, cfg.Database, log)
+	pool, err := database.Open(startup, cfg.Database)
 	cancel()
-	if err != nil {
-		return err
-	}
-	pool, err := db.DB()
 	if err != nil {
 		return err
 	}

@@ -59,6 +59,7 @@
 		"#lib/*": "./src/lib/*"
 	},
 	"dependencies": {
+		"openapi-fetch": "^0.17.0",
 		"svelte-i18n": "^4.0.1"
 	}
 }

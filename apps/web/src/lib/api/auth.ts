@@ -1,55 +1,39 @@
 import type { components } from './schema';
+import { ApiError, client } from './client.js';
 import { MessageError, type MessageKey, type MessageState } from '#lib/i18n/types.js';
+
+export { ApiError } from './client.js';
 
 type Schemas = components['schemas'];
 export type User = Schemas['User'];
 export type Session = Schemas['Session'];
 
-export class ApiError extends Error {
-	constructor(
-		public status: number,
-		public code: string
-	) {
-		super(code);
-	}
+async function responseData<T>(request: Promise<{ data?: T }>): Promise<T> {
+	const { data } = await request;
+	if (data === undefined) throw new Error('Missing API response body');
+	return data;
 }
 
-async function request<T>(
-	path: string,
-	method = 'GET',
-	body?: unknown,
-	token?: string
-): Promise<T> {
-	const response = await fetch(`/api/v1/auth/${path}`, {
-		method,
-		cache: 'no-store',
-		credentials: 'omit',
-		headers: {
-			...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-			...(token ? { Authorization: `Bearer ${token}` } : {})
-		},
-		body: body === undefined ? undefined : JSON.stringify(body)
-	});
-	if (!response.ok) {
-		const error = await response.json().catch(() => ({}));
-		throw new ApiError(response.status, error.error ?? 'unknown');
-	}
-	return response.status === 204 ? (undefined as T) : response.json();
-}
+const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 export const authApi = {
-	guest: () => request<Session>('guest', 'POST'),
-	register: (body: Schemas['RegisterRequest']) => request<Session>('register', 'POST', body),
-	login: (body: Schemas['LoginRequest']) => request<Session>('login', 'POST', body),
-	me: (token: string) => request<Schemas['CurrentUser']>('me', 'GET', undefined, token),
-	profile: (token: string, body: Schemas['UpdateProfileRequest']) =>
-		request<void>('me', 'PATCH', body, token),
-	upgrade: (token: string, body: Schemas['UpgradeRequest']) =>
-		request<void>('upgrade', 'POST', body, token),
-	password: (token: string, body: Schemas['ChangePasswordRequest']) =>
-		request<void>('password', 'POST', body, token),
-	logout: (token: string, all: boolean) =>
-		request<void>(all ? 'logout-all' : 'logout', 'POST', undefined, token)
+	guest: () => responseData(client.POST('/auth/guest')),
+	register: (body: Schemas['RegisterRequest']) =>
+		responseData(client.POST('/auth/register', { body })),
+	login: (body: Schemas['LoginRequest']) => responseData(client.POST('/auth/login', { body })),
+	me: (token: string) => responseData(client.GET('/auth/me', { headers: bearer(token) })),
+	profile: async (token: string, body: Schemas['UpdateProfileRequest']) => {
+		await client.PATCH('/auth/me', { body, headers: bearer(token) });
+	},
+	upgrade: async (token: string, body: Schemas['UpgradeRequest']) => {
+		await client.POST('/auth/upgrade', { body, headers: bearer(token) });
+	},
+	password: async (token: string, body: Schemas['ChangePasswordRequest']) => {
+		await client.POST('/auth/password', { body, headers: bearer(token) });
+	},
+	logout: async (token: string, all: boolean) => {
+		await client.POST(all ? '/auth/logout-all' : '/auth/logout', { headers: bearer(token) });
+	}
 };
 
 export function errorMessage(error: unknown): MessageKey {

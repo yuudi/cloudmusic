@@ -4,7 +4,7 @@ Cloud Music 是一个开源、自托管音乐平台，以移动端为主，同�
 
 项目处于早期开发阶段，已实现基础账号的前后端流程：注册、登录、游客身份与升级、个人资料修改、密码修改、会话撤销，以及游客连续 30 天不活跃清理。客户端已具备 PWA 应用入口、黑白灰与深红配色、系统深浅色适配和中英文切换（英文回退）。
 
-客户端采用 Svelte 5、SvelteKit、Tailwind CSS 和 Skeleton；服务端采用 Go、Gin 和 GORM，使用 Postgres 与 Redis。歌曲、存储接入、音频播放和好友分享尚未实现；rclone 接入与 ffmpeg wasm 解码回退见设计文档。初期面向单机自托管部署。
+客户端采用 Svelte 5、SvelteKit、Tailwind CSS 和 Skeleton；服务端采用 Go、Gin 和 pgx，通过 database/sql 访问 Postgres，并使用 Redis。歌曲、存储接入、音频播放和好友分享尚未实现；rclone 接入与 ffmpeg wasm 解码回退见设计文档。初期面向单机自托管部署。
 
 ## 本地开发
 
@@ -12,6 +12,7 @@ Cloud Music 是一个开源、自托管音乐平台，以移动端为主，同�
 
 - [前端开发说明](apps/web/README.md)
 - [后端开发说明与数据库重置命令](apps/server/README.md)
+- [OpenAPI 定义、前端类型生成与接口维护流程](apps/web/README.md#api-与-openapi)
 
 `just` 列出常用命令：`init`、`dev`、`dev-web`、`dev-server`、`build-web`、`build-server`、`test-web`、`test-server`、`db-migrate` 和 `db-reset`。`db-reset` 会删除开发数据库中的表并重新执行迁移。
 

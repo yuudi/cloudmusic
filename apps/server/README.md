@@ -1,6 +1,6 @@
 # Cloud Music 服务端
 
-Go 1.27.3、Gin、Postgres + GORM、Redis。Go 依赖通过 `go.mod` 和 `go.sum` 固定。提供基础账号认证；歌曲、存储接入和音频转发业务尚未实现。
+Go 1.27.3、Gin、Postgres + pgx（database/sql）、Redis。Go 依赖通过 `go.mod` 和 `go.sum` 固定。提供基础账号认证；歌曲、存储接入和音频转发业务尚未实现。
 
 ## 本地开发
 
@@ -61,7 +61,7 @@ curl http://localhost:8080/api/v1/health/ready
 
 ## 数据库迁移与重置
 
-迁移使用 Goose，SQL 位于 `migrations/` 并嵌入迁移二进制，与 GORM 的业务查询职责分开。服务启动不调用 `AutoMigrate`。迁移工具只要求数据库配置，不依赖 Redis。
+迁移使用 Goose，SQL 位于 `migrations/` 并嵌入迁移二进制。业务查询和事务使用 database/sql 与 pgx 驱动，服务启动不自动修改表结构。迁移工具只要求数据库配置，不依赖 Redis。
 
 ```sh
 just db-migrate          # 应用所有待执行迁移
@@ -114,7 +114,7 @@ just build-server
 - `cmd/reset-password`：管理员交互式重置密码。
 - `internal/auth`：账号、密码凭据、会话与游客清理。
 - `internal/config`：环境变量读取与校验。
-- `internal/database`：GORM、Postgres 连接池。
+- `internal/database`：pgx 驱动与 database/sql 连接池。
 - `internal/cache`：Redis 连接。
 - `internal/httpserver`：路由、日志、panic 恢复与健康检查。
 - `migrations`：版本化 SQL。
@@ -124,6 +124,10 @@ just build-server
 ## 账号 API
 
 接口类型、认证方式和响应状态详见 [OpenAPI 规范](openapi/openapi.yaml)。
+
+规范使用 OpenAPI 3.0.3，按实际路由、认证、请求与响应类型及错误行为手动维护；Go 服务使用手写路由和处理函数。新增或修改接口时同步更新规范，写明字段可选性、空值含义和特殊业务限制，并使用 OpenAPI 校验工具检查规范及 `$ref` 引用。
+
+前端通过 `openapi-typescript` 从规范生成 TypeScript 类型，使用 `openapi-fetch` 按路径和方法推导请求与响应。修改接口后，在 `apps/web` 执行 `npm run generate:api`，同步提交生成的 `src/lib/api/schema.d.ts` 并调整调用方。文件职责及完整维护流程见[前端 API 与 OpenAPI 说明](../web/README.md#api-与-openapi)；类型生成不替代后端验证和接口测试。
 
 所有接口位于 `/api/v1/auth`，请求和响应使用 JSON。`POST /guest` 创建游客，`POST /register` 接收 `username`、`password`、`display_name`，`POST /login` 接收 `username`、`password`。成功返回 `user`、`token`、`token_type`、`expires_in`。用户名为 3–32 位 ASCII 字母、数字或下划线，比较忽略大小写；密码为 8–1024 字节，显示名最多 100 个 Unicode 字符。密码采用 Argon2id PHC 格式（版本 19，内存 64 MiB，迭代 3 次，并行度 4），记录算法、参数与随机盐；旧格式在成功登录后自动升级。数据库只保存随机会话令牌的 SHA-256 摘要。
 
@@ -150,3 +154,5 @@ TEST_DATABASE_URL="$DATABASE_URL" bash apps/server/tests/hurl/run.sh
 ```
 
 脚本在指定 PostgreSQL 数据库中创建随机名称的临时 schema，执行迁移并在本地随机端口启动服务；结束时停止服务并删除该 schema。Redis 仅供服务连接及健康检查，不会清空数据。`TEST_DATABASE_URL` 指向的数据库用户需要创建 schema 的权限。
+
+后端测试环境由[公共测试脚本](../../scripts/README.md)管理，启动、清理、信号处理及限制见该说明。

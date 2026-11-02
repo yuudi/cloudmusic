@@ -6,13 +6,12 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -32,17 +31,6 @@ type User struct {
 }
 type Service struct{ DB *sql.DB }
 
-func random(n int) ([]byte, error) { b := make([]byte, n); _, err := rand.Read(b); return b, err }
-func newID() (string, error) {
-	b, e := random(16)
-	if e != nil {
-		return "", e
-	}
-	b[6] = (b[6] & 15) | 64
-	b[8] = (b[8] & 63) | 128
-	s := hex.EncodeToString(b)
-	return fmt.Sprintf("%s-%s-%s-%s-%s", s[:8], s[8:12], s[12:16], s[16:20], s[20:]), nil
-}
 func validName(s string) bool { return usernamePattern.MatchString(s) }
 func validDisplay(s string) bool {
 	return utf8.ValidString(s) && utf8.RuneCountInString(s) <= 100 && !strings.ContainsRune(s, 0)
@@ -56,12 +44,10 @@ func conflict(err error) error {
 }
 func tokenHash(token string) []byte { h := sha256.Sum256([]byte(token)); return h[:] }
 func createSession(ctx context.Context, tx *sql.Tx, id string) (string, error) {
-	b, e := random(32)
-	if e != nil {
-		return "", e
-	}
-	t := base64.RawURLEncoding.EncodeToString(b)
-	_, e = tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,user_id,expires_at) VALUES ($1,$2,now()+interval '30 days')`, tokenHash(t), id)
+	var b [32]byte
+	rand.Read(b[:])
+	t := base64.RawURLEncoding.EncodeToString(b[:])
+	_, e := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,user_id,expires_at) VALUES ($1,$2,now()+interval '30 days')`, tokenHash(t), id)
 	return t, e
 }
 func (s *Service) Create(ctx context.Context, username, password, display string, guest bool) (User, string, error) {
@@ -77,10 +63,7 @@ func (s *Service) Create(ctx context.Context, username, password, display string
 			return u, "", e
 		}
 	}
-	u.ID, e = newID()
-	if e != nil {
-		return u, "", e
-	}
+	u.ID = uuid.NewV4().String()
 	u.IsGuest = guest
 	u.DisplayName = display
 	if !guest {

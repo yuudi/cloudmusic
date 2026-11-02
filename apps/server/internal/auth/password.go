@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
@@ -26,10 +27,8 @@ func PasswordHash(password string) (string, error) {
 	if len(password) < 8 || len(password) > 1024 {
 		return "", ErrInvalid
 	}
-	salt, err := random(passwordSaltLength)
-	if err != nil {
-		return "", err
-	}
+	salt := make([]byte, passwordSaltLength)
+	rand.Read(salt)
 	hash := argon2.IDKey([]byte(password), salt, passwordIterations, passwordMemory, passwordParallelism, passwordHashLength)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, passwordMemory, passwordIterations, passwordParallelism, base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(hash)), nil
 }

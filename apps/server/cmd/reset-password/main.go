@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 	"syscall"
@@ -51,11 +50,7 @@ func run() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	db, e := database.Open(ctx, cfg, slog.New(slog.NewJSONHandler(os.Stderr, nil)))
-	if e != nil {
-		return e
-	}
-	pool, e := db.DB()
+	pool, e := database.Open(ctx, cfg)
 	if e != nil {
 		return e
 	}

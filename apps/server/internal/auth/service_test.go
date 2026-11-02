@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -50,10 +51,7 @@ func testDB(t *testing.T) *sql.DB {
 	}
 	admin := stdlib.OpenDB(*cfg)
 	t.Cleanup(func() { admin.Close() })
-	id, e := newID()
-	if e != nil {
-		t.Fatal(e)
-	}
+	id := uuid.NewV4().String()
 	schema := "test_" + strings.ReplaceAll(id, "-", "")
 	if _, e = admin.Exec(`CREATE SCHEMA ` + schema); e != nil {
 		t.Fatal(e)

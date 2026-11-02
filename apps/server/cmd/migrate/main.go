@@ -38,12 +38,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	startup, cancel := context.WithTimeout(ctx, 5*time.Second)
-	db, err := database.Open(startup, cfg, log)
+	pool, err := database.Open(startup, cfg)
 	cancel()
-	if err != nil {
-		return err
-	}
-	pool, err := db.DB()
 	if err != nil {
 		return err
 	}
