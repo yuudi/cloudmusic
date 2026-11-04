@@ -87,19 +87,33 @@ bash ../../.devcontainer/scripts/install-playwright.sh chromium firefox webkit
 | `npm run preview`         | 本地预览生产版本，不作为生产服务使用                |
 | `npm run generate:api`    | 从后端 OpenAPI 重新生成前端 API 类型                |
 
+在仓库根目录也可通过 just 运行测试：
+
+| 命令                      | 范围                                                                     |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `just test-web-unit`      | Vitest 单元和 Chromium 组件测试                                          |
+| `just test-web-e2e`       | 五种浏览器／设备配置的 Playwright 界面和 PWA 测试，账号 API 使用模拟响应 |
+| `just test-fullstack-e2e` | Chromium 对接真实后端的账号流程                                          |
+| `just test-web`           | 兼容入口，依次运行 `test-web-unit` 和 `test-web-e2e`                     |
+| `just test`               | 全仓库测试，包含上述测试及后端、数据库和公共脚本测试                     |
+
+`just test-web-e2e` 显式清空 `CLOUDMUSIC_ACCOUNT_E2E`，真实后端账号用例按设计跳过；`just test-fullstack-e2e` 单独启用该用例。两者均包含生产构建。`just test` 按顺序执行各类测试，避免两轮 Playwright 占用同一个预览端口；任一步失败即停止。类型、格式和 lint 检查仍分别通过 `npm run check` 和 `npm run lint` 运行。
+
 Vitest 为 Node 单元测试和浏览器组件测试分别保留项目，覆盖 API 客户端、会话恢复、独立表单草稿、字典完整性和 PWA 更新确认。Playwright 检查客户端导航、前进后退、深层链接刷新、安装清单与图标、离线冷启动，以及 API 和音频请求不会自动缓存。测试使用生产构建，避免开发服务器掩盖 Service Worker 问题。模拟 API 的用例禁用 Service Worker，保证网络模拟覆盖新标签页；离线用例保持 Service Worker 启用。
 
-账号测试另覆盖输入规则、会话恢复、断网重试、游客升级和过期处理。默认 E2E 中的账号界面测试使用模拟 API；真实后端流程通过以下脚本运行（在仓库根目录执行，需要 PostgreSQL、Redis、Go、psql、curl、Python 3 和已安装的 Chromium）：
+账号测试另覆盖输入规则、会话恢复、断网重试、游客升级和过期处理。默认 E2E 中的账号界面测试使用模拟 API；真实后端流程通过以下命令运行（在仓库根目录执行，需要 Node.js、PostgreSQL、Redis、Go、psql、curl、Python 3 和已安装的 Chromium）：
 
 ```sh
-TEST_DATABASE_URL="$DATABASE_URL" bash apps/web/tests/e2e/run.sh
+just test-fullstack-e2e
 ```
 
-脚本创建随机临时 PostgreSQL schema，执行迁移，启动独立端口的后端，再运行 Chromium 账号测试；结束后停止后端并删除该 schema，不重置开发数据。覆盖游客升级的身份继承、资料隔离、大小写登录、当前会话退出、改密撤销所有会话和退出所有设备。普通 `npm run test:e2e` 跳过此真实后端用例；运行上述脚本才算完成联调验证。
+脚本创建随机临时 PostgreSQL schema，执行迁移，启动独立端口的后端，再运行 Chromium 账号测试；结束后停止后端并删除该 schema，不重置开发数据。覆盖游客升级的身份继承、资料隔离、大小写登录、当前会话退出、改密撤销所有会话和退出所有设备。普通 `npm run test:e2e` 默认跳过此真实后端用例；运行上述命令才算完成联调验证。
 
 后端测试环境由[公共测试脚本](../../scripts/README.md)管理，启动、清理、信号处理及限制见该说明。
 
-`TEST_DATABASE_URL` 对应的用户须有创建和删除测试 schema 的权限；`REDIS_URL` 必须指向可达的 Redis，脚本不清空 Redis。脚本直接读取环境变量，不加载 `apps/server/.env`；容器外使用时先按后端 README 加载配置。预览服务器固定使用 4173 端口，不能与另一轮前端 E2E 同时运行。真实账号测试固定使用 Chromium 和单个 worker，避免触发匿名账号接口每分钟 10 次的限流；跨浏览器界面行为由普通 E2E 覆盖。
+just 优先使用 `TEST_DATABASE_URL`，为空或未设置时回退到 `DATABASE_URL`；两者都没有时失败。just 自动加载 `apps/server/.env`，已有环境变量优先。数据库用户须有创建和删除测试 schema 的权限；`REDIS_URL` 必须指向可达的 Redis，脚本不清空 Redis。
+
+也可直接运行 `TEST_DATABASE_URL="$DATABASE_URL" bash apps/web/tests/e2e/run.sh`。直接脚本调用要求显式设置 `TEST_DATABASE_URL` 和 `REDIS_URL`，不加载 `.env`，也不回退到 `DATABASE_URL`；容器外使用时先按后端 README 加载配置。预览服务器固定使用 4173 端口，不能与另一轮前端 E2E 同时运行。真实账号测试固定使用 Chromium 和单个 worker，避免触发匿名账号接口每分钟 10 次的限流；跨浏览器界面行为由普通 E2E 覆盖。
 
 自动化目标包含 Chromium、Firefox、WebKit，以及 Android Chrome 和 iPhone Safari 的设备模拟。产品目标覆盖 iOS Safari / 主屏幕 PWA、Android Chrome 和桌面主流浏览器。设备模拟不能替代真机验收；PWA 安装、后台连续播放、锁屏和耳机控制、音频焦点与来电打断需在播放器实现后验证。
 

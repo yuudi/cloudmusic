@@ -6,10 +6,14 @@ guest_token: jsonpath "$.token"
 guest_id: jsonpath "$.user.id"
 [Asserts]
 jsonpath "$.user.is_guest" == true
+jsonpath "$.user.username" == null
+jsonpath "$.token" matches "^[A-Za-z0-9_-]{43}$"
 jsonpath "$.token_type" == "Bearer"
+jsonpath "$.expires_in" == 2592000
+header "Content-Type" contains "application/json"
 header "Cache-Control" == "no-store"
 
-# Guest profile editing counts as activity; checking /me alone does not.
+# A guest can edit their profile before upgrading.
 PATCH {{base_url}}/api/v1/auth/me
 Authorization: Bearer {{guest_token}}
 Content-Type: application/json
@@ -54,6 +58,10 @@ HTTP 200
 second_token: jsonpath "$.token"
 [Asserts]
 jsonpath "$.user.id" == "{{guest_id}}"
+jsonpath "$.token" != "{{guest_token}}"
+jsonpath "$.token_type" == "Bearer"
+jsonpath "$.expires_in" == 2592000
+header "Cache-Control" == "no-store"
 
 PATCH {{base_url}}/api/v1/auth/me
 Authorization: Bearer {{guest_token}}
@@ -131,6 +139,11 @@ other_id: jsonpath "$.user.id"
 [Asserts]
 jsonpath "$.user.is_guest" == false
 jsonpath "$.user.id" != "{{guest_id}}"
+jsonpath "$.user.username" == "Other_User"
+jsonpath "$.user.display_name" == "Other"
+jsonpath "$.token_type" == "Bearer"
+jsonpath "$.expires_in" == 2592000
+header "Cache-Control" == "no-store"
 
 POST {{base_url}}/api/v1/auth/login
 Content-Type: application/json

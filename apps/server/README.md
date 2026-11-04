@@ -16,7 +16,9 @@ just dev-server
 
 另开终端执行 `just dev-web`，或直接使用 `just dev` 同时启动前后端。Vite 默认将 `/api` 代理到 `http://localhost:8080`，浏览器使用同源 API，不需要开放 CORS。生产环境同样通过同源 `/api` 访问；当前 Go 服务不托管前端静态文件。just 的版本要求见[根目录开发说明](../../README.md#本地开发)。
 
-Compose 自动注入 `DATABASE_URL` 和 `REDIS_URL`，使用 `postgres`、`redis` 服务名；不必创建 `.env`。数据库和 Redis 使用独立命名卷，重建开发容器保留数据，容器启动不自动执行迁移或重置。
+Compose 自动注入 `DATABASE_URL` 和 `REDIS_URL`，使用 `postgres`、`redis` 服务名；不必创建 `.env`。数据库和 Redis 使用独立命名卷，重建开发容器保留数据。
+
+首次启动服务前，以及新增或拉取迁移后，需手动执行 `just db-migrate`，应用所有待执行迁移；已执行的迁移不会重复执行。容器内外均需执行此步骤。
 
 容器外运行 Go 时，先转发数据库与 Redis 端口，将 `.env.example` 复制为 `apps/server/.env`，再从根目录使用 `just`。just 自动读取该文件，已有环境变量优先。Go 程序和直接执行的脚本只读取环境变量；容器外使用下文的直接命令前，可在 Bash 中加载本地配置：
 
@@ -85,13 +87,18 @@ bash .devcontainer/scripts/reset-data.sh    # 依次重置 Postgres 与 Redis
 
 以下命令在仓库根目录执行：
 
-| 命令                | 用途                                    |
-| ------------------- | --------------------------------------- |
-| `just init`         | 安装前后端依赖                          |
-| `just dev`          | 同时启动前后端                          |
-| `just dev-server`   | 本地启动                                |
-| `just build-server` | 构建服务、迁移工具到 `apps/server/bin/` |
-| `just test-server`  | 带 race detector 的测试，无需外部数据库 |
+| 命令                           | 用途                                              |
+| ------------------------------ | ------------------------------------------------- |
+| `just init`                    | 安装前后端依赖                                    |
+| `just dev`                     | 同时启动前后端                                    |
+| `just dev-server`              | 本地启动                                          |
+| `just build-server`            | 构建服务、迁移工具到 `apps/server/bin/`           |
+| `just test-server-unit`        | Go 单元测试，启用 race detector，不依赖数据库     |
+| `just test-server-integration` | Go 单元和数据库集成测试，启用 race detector       |
+| `just test-server-e2e`         | Hurl API E2E，无浏览器，使用真实后端和临时 schema |
+| `just test-server`             | `test-server-unit` 的兼容别名                     |
+
+`just test-server-unit` 显式清空 `TEST_DATABASE_URL`，数据库集成用例按设计跳过。`just test-server-integration` 使用 `-count=1` 禁用 Go 测试结果缓存，每次实际验证数据库。它和 `just test-server-e2e` 优先使用 `TEST_DATABASE_URL`，为空或未设置时回退到 `DATABASE_URL`；两者均未配置时失败。just 自动加载 `apps/server/.env`，已有环境变量优先。API E2E 另需 `REDIS_URL`。
 
 仅下载后端依赖或格式化代码时，直接执行：
 
@@ -105,7 +112,9 @@ go -C apps/server fmt ./...
 ```sh
 test -z "$(gofmt -l apps/server)"  # 不通过时用 gofmt -l apps/server 查看文件
 go -C apps/server vet ./...
-just test-server
+just test-server-unit
+just test-server-integration
+just test-server-e2e
 just build-server
 ```
 
@@ -119,7 +128,7 @@ just build-server
 - `internal/httpserver`：路由、日志、panic 恢复与健康检查。
 - `migrations`：版本化 SQL。
 
-测试覆盖无效配置、连接串脱敏、依赖故障时的存活/就绪状态、探测超时及 HTTP panic 恢复。账号数据库集成测试另覆盖游客升级、资料与会话、密码重置并发及游客清理；设置 `TEST_DATABASE_URL` 后会创建和清理随机临时 schema，未设置时跳过。开发容器重建需要 Docker。
+测试覆盖无效配置、连接串脱敏、依赖故障时的存活/就绪状态、探测超时及 HTTP panic 恢复。账号数据库集成测试另覆盖游客升级、资料与会话、密码重置并发及游客清理，并创建和清理随机临时 schema。直接运行 `go test` 时，未设置 `TEST_DATABASE_URL` 会跳过数据库集成用例；不能把跳过视为数据库验证通过。开发容器重建需要 Docker。
 
 ## 账号 API
 
@@ -145,14 +154,27 @@ just build-server
 
 管理员在服务器的交互终端运行 `go -C apps/server run ./cmd/reset-password USERNAME`，输入并确认新密码。该命令仅要求数据库配置，重置后撤销全部会话。构建产物也可通过 `apps/server/bin/reset-password USERNAME` 运行。
 
-数据库集成测试使用 `TEST_DATABASE_URL`，会在目标库创建并删除名称随机的独立测试 schema；未设置时跳过。普通测试命令不需要数据库。
+数据库集成测试通过 `just test-server-integration` 运行，会在目标库创建并删除名称随机的独立测试 schema；数据库用户须有创建和删除 schema 的权限。直接调用 Go 时使用 `TEST_DATABASE_URL="$DATABASE_URL" go -C apps/server test -race ./...`。
 
-账号 Hurl 端到端测试要求已安装 `hurl`、`psql`、`curl` 和 Python 3，并提供 PostgreSQL 与 Redis：
+账号 Hurl API E2E 要求已安装 Go、`hurl`、`psql`、`curl` 和 Python 3，并提供 PostgreSQL 与 Redis。在仓库根目录运行：
 
 ```sh
-TEST_DATABASE_URL="$DATABASE_URL" bash apps/server/tests/hurl/run.sh
+just test-server-e2e
 ```
 
-脚本在指定 PostgreSQL 数据库中创建随机名称的临时 schema，执行迁移并在本地随机端口启动服务；结束时停止服务并删除该 schema。Redis 仅供服务连接及健康检查，不会清空数据。`TEST_DATABASE_URL` 指向的数据库用户需要创建 schema 的权限。
+脚本按文件名顺序执行 `tests/hurl/*.hurl`，每个文件自行准备数据，并使用独立的随机临时 schema 和后端进程。它逐个执行迁移、等待服务就绪、运行场景，最后停止服务并删除 schema；新进程也会重置匿名接口的限流额度。任一场景失败后，输出后端日志、清理资源并停止后续场景，保留失败退出码。Redis 仅供服务连接及健康检查，不会清空数据；数据库用户需要创建和删除 schema 的权限。
+
+| 场景                  | 覆盖内容                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| `accounts.hurl`       | 游客升级、资料编辑、大小写登录、注册、改密与退出的主流程及会话响应字段                       |
+| `session-scope.hurl`  | 两个用户的多会话隔离：当前退出、全部退出、改密的撤销范围，以及错误旧密码不改变状态           |
+| `authentication.hurl` | 所有受保护操作拒绝缺失、伪造和已撤销的令牌；错误认证方案被拒绝；原有账号状态保持有效         |
+| `validation.hurl`     | JSON 格式和字段校验、游客权限、升级与改名冲突、null 字段，以及失败后身份、资料和凭据保持不变 |
+| `rate-limit.hurl`     | 三个匿名接口共享十次额度，耗尽后返回 429、错误码和 Retry-After，受保护的读写仍可使用         |
+| `health.hurl`         | 真实 HTTP 服务的存活、就绪响应及依赖状态，未知路由和错误方法返回 JSON 错误                   |
+
+增加独立场景时直接添加 `.hurl` 文件，入口自动发现并执行；不要依赖其他文件捕获的变量或创建的数据。可使用 `hurlfmt --check apps/server/tests/hurl/*.hurl` 在仓库根目录检查语法与格式。限流恢复、依赖故障、会话续期时间和事务并发由 Go 单元或数据库集成测试验证，不通过真实等待或中断共享 PostgreSQL／Redis 来测试。
+
+也可直接运行 `TEST_DATABASE_URL="$DATABASE_URL" bash apps/server/tests/hurl/run.sh`；直接脚本调用要求显式设置 `TEST_DATABASE_URL` 和 `REDIS_URL`，不加载 `.env`，也不回退到 `DATABASE_URL`。
 
 后端测试环境由[公共测试脚本](../../scripts/README.md)管理，启动、清理、信号处理及限制见该说明。

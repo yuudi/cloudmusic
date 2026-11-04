@@ -12,6 +12,7 @@ import unittest
 
 
 HELPER = Path(__file__).resolve().parents[1] / 'test-server.sh'
+HURL_DIR = HELPER.parent.parent / 'apps/server/tests/hurl'
 STUB = '''#!{python}
 import json
 import os
@@ -51,6 +52,8 @@ elif tool == 'psql':
         sys.exit(41)
     if operation == 'DROP' and mode == 'drop_failure':
         sys.exit(43)
+    if operation == 'DROP':
+        (state / 'server_ready').unlink(missing_ok=True)
 elif tool == 'migrate':
     record('migrate', url=os.environ['DATABASE_URL'])
     if mode == 'migration_failure':
@@ -61,6 +64,7 @@ elif tool == 'server':
     if mode == 'server_failure':
         print('server diagnostic', flush=True)
         sys.exit(44)
+    print('server runtime diagnostic', flush=True)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     (state / 'server_ready').touch()
     while True:
@@ -68,6 +72,10 @@ elif tool == 'server':
 elif tool == 'curl':
     (state / 'helper_pid').write_text(str(os.getppid()))
     sys.exit(0 if (state / 'server_ready').exists() else 1)
+elif tool == 'hurl':
+    record('hurl', scenario=Path(args[-1]).name)
+    if mode == 'hurl_failure':
+        sys.exit(23)
 '''
 
 
@@ -80,7 +88,7 @@ class TestServerLifecycle(unittest.TestCase):
         self.bin.mkdir()
         self.run_dir = self.root / 'tmp'
         self.run_dir.mkdir()
-        for tool in ('go', 'psql', 'curl', 'python3'):
+        for tool in ('go', 'psql', 'curl', 'python3', 'hurl'):
             path = self.bin / tool
             path.write_text(STUB.format(python=sys.executable))
             path.chmod(0o755)
@@ -113,12 +121,12 @@ with_test_server check run_tests
             capture_output=True, text=True, timeout=10,
         )
 
-    def assert_cleaned(self):
+    def assert_cleaned(self, runs=1):
         events = self.events()
         created = [event['query'] for event in events if event['event'] == 'CREATE']
         dropped = [event['query'] for event in events if event['event'] == 'DROP']
-        self.assertEqual(len(created), 1)
-        self.assertEqual(dropped, [created[0].replace('CREATE SCHEMA', 'DROP SCHEMA') + ' CASCADE'])
+        self.assertEqual(len(created), runs)
+        self.assertEqual(dropped, [query.replace('CREATE SCHEMA', 'DROP SCHEMA') + ' CASCADE' for query in created])
         self.assertEqual(list(self.run_dir.iterdir()), [])
         for event in events:
             if event['event'] == 'server':
@@ -146,6 +154,7 @@ with_test_server check run_tests
             after='[[ "$CLOUDMUSIC_API_URL" == parent-value ]]; [[ -z "$(trap -p)" ]]; [[ "$-" != *m* ]]',
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('server runtime diagnostic', result.stderr)
         url = next(event['url'] for event in self.events() if event['event'] == 'migrate')
         self.assertIn('sslmode=disable&search_path=check_', url)
         self.assertNotIn('search_path=old', url)
@@ -170,6 +179,39 @@ with_test_server check true
     def test_callback_failure_preserves_exit_code(self):
         result = self.run_helper('return 23')
         self.assertEqual(result.returncode, 23, result.stderr)
+        self.assertIn('Test server log:', result.stderr)
+        self.assertIn('server runtime diagnostic', result.stderr)
+        self.assert_cleaned()
+
+    def test_hurl_scenarios_use_independent_schemas_and_servers(self):
+        result = subprocess.run(
+            ['bash', str(HURL_DIR / 'run.sh')], env=self.env,
+            capture_output=True, text=True, timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        scenarios = sorted(path.name for path in HURL_DIR.glob('*.hurl'))
+        self.assertTrue(scenarios)
+        events = self.events()
+        self.assertEqual([event['scenario'] for event in events if event['event'] == 'hurl'], scenarios)
+        servers = [event for event in events if event['event'] == 'server']
+        self.assertEqual(len(servers), len(scenarios))
+        self.assertEqual(len({event['url'] for event in servers}), len(scenarios))
+        self.assertEqual(len({event['pid'] for event in servers}), len(scenarios))
+        for scenario in scenarios:
+            self.assertIn(f'Running API E2E: {scenario}', result.stdout)
+        self.assertNotIn('server runtime diagnostic', result.stderr)
+        self.assert_cleaned(runs=len(scenarios))
+
+    def test_hurl_failure_stops_later_scenarios_and_outputs_server_logs(self):
+        result = subprocess.run(
+            ['bash', str(HURL_DIR / 'run.sh')], env={**self.env, 'TEST_MODE': 'hurl_failure'},
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 23, result.stderr)
+        first = min(path.name for path in HURL_DIR.glob('*.hurl'))
+        self.assertEqual([event['scenario'] for event in self.events() if event['event'] == 'hurl'], [first])
+        self.assertIn('Test server log:', result.stderr)
+        self.assertIn('server runtime diagnostic', result.stderr)
         self.assert_cleaned()
 
     def test_startup_failures_print_logs_and_clean_up(self):

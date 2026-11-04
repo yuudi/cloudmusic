@@ -43,6 +43,10 @@ _with_test_server() {
                 cleanup_failed=1
             fi
         fi
+        if [[ ( "$status" != 0 || "$cleanup_failed" == 1 ) && -f "$run_dir/server.log" ]]; then
+            echo 'Test server log:' >&2
+            cat "$run_dir/server.log" >&2 || true
+        fi
         if ! rm -rf -- "$run_dir"; then
             cleanup_failed=1
         fi
@@ -97,7 +101,6 @@ PY
     until curl --silent --fail --max-time 1 "$CLOUDMUSIC_API_URL/api/v1/health/ready" >/dev/null; do
         if ! kill -0 "$server_pid" 2>/dev/null || ((SECONDS >= deadline)); then
             echo 'Test server did not become ready.' >&2
-            cat "$run_dir/server.log" >&2
             exit 1
         fi
         sleep 0.1
